@@ -8,10 +8,8 @@ ICONSET := $(BUILD_DIR)/AppIcon.iconset
 ICNS := assets/AppIcon.icns
 ZIP := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.zip
 DMG := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.dmg
-SIGN_IDENTITY ?=
-NOTARY_PROFILE ?=
 
-.PHONY: build run icon package adhoc-sign zip dmg sign notarize release clean
+.PHONY: build run icon package adhoc-sign zip dmg release clean
 
 build:
 	mkdir -p "$(BUILD_DIR)"
@@ -70,19 +68,6 @@ zip: adhoc-sign
 dmg: adhoc-sign
 	rm -f "$(DMG)"
 	hdiutil create -volname "$(APP_NAME)" -srcfolder "$(APP_DIR)" -ov -format UDZO "$(DMG)"
-
-sign: package
-	@test -n "$(SIGN_IDENTITY)" || (echo 'SIGN_IDENTITY is required, for example: make sign SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"' && exit 1)
-	codesign --force --deep --options runtime --timestamp --sign "$(SIGN_IDENTITY)" "$(APP_DIR)"
-	codesign --verify --deep --strict --verbose=2 "$(APP_DIR)"
-
-notarize: sign
-	@test -n "$(NOTARY_PROFILE)" || (echo 'NOTARY_PROFILE is required, for example: make notarize NOTARY_PROFILE=catkeyper-notary' && exit 1)
-	rm -f "$(ZIP)"
-	ditto -c -k --keepParent "$(APP_DIR)" "$(ZIP)"
-	xcrun notarytool submit "$(ZIP)" --keychain-profile "$(NOTARY_PROFILE)" --wait
-	xcrun stapler staple "$(APP_DIR)"
-	ditto -c -k --keepParent "$(APP_DIR)" "$(ZIP)"
 
 release: zip dmg
 

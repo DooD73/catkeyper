@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+    - name: Website
+      url: https://catkeyper.com
+      about: Product info, demo, and download links
+    - name: Contributing guide
+      url: https://github.com/DooD73/catkeyper/blob/main/CONTRIBUTING.md
+      about: How to build, test, and submit changes
