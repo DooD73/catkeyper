@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	fyne.io/fyne/v2 v2.6.1
-	github.com/fyne-io/oksvg v0.1.0
+	github.com/fyne-io/oksvg v0.2.0
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 )
 
