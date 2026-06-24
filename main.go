@@ -1,0 +1,638 @@
+package main
+
+/*
+#cgo darwin LDFLAGS: -framework ApplicationServices -framework CoreFoundation
+#include <ApplicationServices/ApplicationServices.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <stdint.h>
+
+extern int goKeyboardDecision(uint16_t keycode, uint64_t flags, uint32_t eventType);
+extern void goEventTapReenabled(uint32_t eventType);
+
+static CFMachPortRef keyboardEventTap = NULL;
+
+static CGEventRef keyboardTapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
+	if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+		if (keyboardEventTap != NULL) {
+			CGEventTapEnable(keyboardEventTap, true);
+			goEventTapReenabled((uint32_t)type);
+		}
+		return event;
+	}
+
+	if (type != kCGEventKeyDown && type != kCGEventKeyUp && type != kCGEventFlagsChanged) {
+		return event;
+	}
+
+	uint16_t keycode = (uint16_t)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+	uint64_t flags = (uint64_t)CGEventGetFlags(event);
+
+	// Returning NULL from a Quartz event tap callback consumes the event. This
+	// is the low-level macOS suppression point: while Cat Mode is locked, normal
+	// key presses never continue to the active application.
+	if (goKeyboardDecision(keycode, flags, (uint32_t)type) != 0) {
+		return NULL;
+	}
+
+	return event;
+}
+
+static int startKeyboardTap(void) {
+	CGEventMask mask = CGEventMaskBit(kCGEventKeyDown) |
+	                   CGEventMaskBit(kCGEventKeyUp) |
+	                   CGEventMaskBit(kCGEventFlagsChanged);
+
+	keyboardEventTap = CGEventTapCreate(kCGSessionEventTap,
+	                                    kCGHeadInsertEventTap,
+	                                    kCGEventTapOptionDefault,
+	                                    mask,
+	                                    keyboardTapCallback,
+	                                    NULL);
+	if (keyboardEventTap == NULL) {
+		return 0;
+	}
+
+	CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, keyboardEventTap, 0);
+	CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+	CGEventTapEnable(keyboardEventTap, true);
+	CFRunLoopRun();
+
+	CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+	CFRelease(source);
+	CFRelease(keyboardEventTap);
+	keyboardEventTap = NULL;
+	return 1;
+}
+
+static int accessibilityTrusted(void) {
+	return AXIsProcessTrusted() ? 1 : 0;
+}
+
+static int accessibilityTrustedWithPrompt(void) {
+	const void *keys[] = { kAXTrustedCheckOptionPrompt };
+	const void *values[] = { kCFBooleanTrue };
+	CFDictionaryRef options = CFDictionaryCreate(kCFAllocatorDefault,
+	                                             keys,
+	                                             values,
+	                                             1,
+	                                             &kCFCopyStringDictionaryKeyCallBacks,
+	                                             &kCFTypeDictionaryValueCallBacks);
+	Boolean trusted = AXIsProcessTrustedWithOptions(options);
+	CFRelease(options);
+	return trusted ? 1 : 0;
+}
+*/
+import "C"
+
+import (
+	_ "embed"
+	"image/color"
+	"log/slog"
+	"os"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
+)
+
+//go:embed assets/openmoji-cat-face.svg
+var openMojiCatSVG []byte
+
+var openMojiCat = fyne.NewStaticResource("openmoji-cat-face.svg", openMojiCatSVG)
+
+const (
+	appName = "CatKeyper"
+
+	keyA      uint16 = 0
+	keyC      uint16 = 8
+	keyT      uint16 = 17
+	keyShift  uint16 = 56
+	keyRShift uint16 = 60
+
+	eventKeyDown      uint32 = 10
+	eventKeyUp        uint32 = 11
+	eventFlagsChanged uint32 = 12
+
+	shiftMask uint64 = 1 << 17
+)
+
+var (
+	appVersion = "1.0.0"
+
+	locked           atomic.Bool
+	suppressedEvents atomic.Uint64
+
+	hookState = &unlockState{
+		pressed: make(map[uint16]bool),
+	}
+
+	unlockNotifications = make(chan struct{}, 1)
+	appLogger           = newLogger()
+)
+
+type unlockState struct {
+	mu          sync.Mutex
+	pressed     map[uint16]bool
+	sequence    string
+	sequenceTTL time.Time
+}
+
+func newLogger() *slog.Logger {
+	level := slog.LevelInfo
+	if debugLoggingEnabled() {
+		level = slog.LevelDebug
+	}
+
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level:     level,
+		AddSource: false,
+	}))
+}
+
+func debugLoggingEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("CATKEYPER_DEBUG")))
+	return v == "1" || v == "true" || v == "yes" || v == "debug"
+}
+
+//export goKeyboardDecision
+func goKeyboardDecision(keycode C.uint16_t, flags C.uint64_t, eventType C.uint32_t) C.int {
+	if !locked.Load() {
+		return 0
+	}
+
+	if hookState.acceptsUnlockEvent(uint16(keycode), uint64(flags), uint32(eventType)) {
+		locked.Store(false)
+		count := suppressedEvents.Load()
+		appLogger.Info("global unlock sequence accepted",
+			"suppressed_events", count,
+			"event_type", eventTypeName(uint32(eventType)),
+		)
+		select {
+		case unlockNotifications <- struct{}{}:
+		default:
+			appLogger.Debug("unlock notification already pending")
+		}
+	}
+
+	suppressedEvents.Add(1)
+	return 1
+}
+
+//export goEventTapReenabled
+func goEventTapReenabled(eventType C.uint32_t) {
+	appLogger.Warn("macOS keyboard event tap was disabled and re-enabled",
+		"reason", eventTypeName(uint32(eventType)),
+	)
+}
+
+func (s *unlockState) acceptsUnlockEvent(keycode uint16, flags uint64, eventType uint32) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	shiftHeld := flags&shiftMask != 0 || s.pressed[keyShift] || s.pressed[keyRShift]
+
+	switch eventType {
+	case eventFlagsChanged:
+		if keycode == keyShift || keycode == keyRShift {
+			s.pressed[keycode] = flags&shiftMask != 0
+			if !s.pressed[keyShift] && !s.pressed[keyRShift] && flags&shiftMask == 0 {
+				s.reset()
+				appLogger.Debug("unlock sequence reset after shift release")
+			}
+		}
+		return false
+	case eventKeyUp:
+		delete(s.pressed, keycode)
+		return false
+	case eventKeyDown:
+		s.pressed[keycode] = true
+	default:
+		return false
+	}
+
+	if !shiftHeld {
+		s.reset()
+		if isUnlockKey(keycode) {
+			appLogger.Debug("unlock key ignored because shift is not held", "key", keyName(keycode))
+		}
+		return false
+	}
+
+	if s.pressed[keyC] && s.pressed[keyA] && s.pressed[keyT] {
+		s.reset()
+		appLogger.Debug("simultaneous unlock chord matched")
+		return true
+	}
+
+	if now.After(s.sequenceTTL) {
+		s.sequence = ""
+	}
+	s.sequenceTTL = now.Add(2 * time.Second)
+
+	switch keycode {
+	case keyC:
+		s.sequence = "C"
+		appLogger.Debug("unlock sequence progress", "sequence", s.sequence)
+	case keyA:
+		if s.sequence == "C" {
+			s.sequence = "CA"
+			appLogger.Debug("unlock sequence progress", "sequence", s.sequence)
+		} else {
+			s.sequence = ""
+			appLogger.Debug("unlock sequence reset", "key", keyName(keycode))
+		}
+	case keyT:
+		if s.sequence == "CA" {
+			s.reset()
+			appLogger.Debug("sequential unlock chord matched")
+			return true
+		}
+		s.sequence = ""
+		appLogger.Debug("unlock sequence reset", "key", keyName(keycode))
+	default:
+		s.sequence = ""
+	}
+
+	return false
+}
+
+func eventTypeName(eventType uint32) string {
+	switch eventType {
+	case eventKeyDown:
+		return "key_down"
+	case eventKeyUp:
+		return "key_up"
+	case eventFlagsChanged:
+		return "flags_changed"
+	case 0xFFFFFFFE:
+		return "tap_disabled_by_timeout"
+	case 0xFFFFFFFF:
+		return "tap_disabled_by_user_input"
+	default:
+		return "unknown"
+	}
+}
+
+func keyName(keycode uint16) string {
+	switch keycode {
+	case keyA:
+		return "A"
+	case keyC:
+		return "C"
+	case keyT:
+		return "T"
+	case keyShift:
+		return "left_shift"
+	case keyRShift:
+		return "right_shift"
+	default:
+		return "unknown"
+	}
+}
+
+func isUnlockKey(keycode uint16) bool {
+	return keycode == keyA || keycode == keyC || keycode == keyT
+}
+
+func (s *unlockState) reset() {
+	s.sequence = ""
+	s.sequenceTTL = time.Time{}
+	for k := range s.pressed {
+		if k != keyShift && k != keyRShift {
+			delete(s.pressed, k)
+		}
+	}
+}
+
+func startKeyboardHook(status chan<- string) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	appLogger.Info("starting macOS keyboard hook",
+		"tap", "cg_session_event_tap",
+		"thread_locked", true,
+	)
+
+	if C.accessibilityTrusted() == 0 {
+		appLogger.Warn("accessibility permission is not granted; requesting user approval")
+		C.accessibilityTrustedWithPrompt()
+		status <- "Accessibility permission is required. Enable it in System Settings, then restart CatKeyper."
+		appLogger.Warn("keyboard hook startup paused until Accessibility permission is granted")
+		return
+	}
+
+	appLogger.Info("accessibility permission verified")
+	status <- "Keyboard guard ready."
+	if C.startKeyboardTap() == 0 {
+		appLogger.Error("failed to create macOS keyboard event tap")
+		status <- "Could not create the macOS keyboard event tap. Check Accessibility/Input Monitoring permissions."
+		return
+	}
+	appLogger.Info("keyboard event tap run loop exited")
+}
+
+type catTheme struct{}
+
+func (catTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	switch name {
+	case theme.ColorNameBackground:
+		return color.NRGBA{R: 255, G: 246, B: 226, A: 255}
+	case theme.ColorNameButton:
+		return color.NRGBA{R: 239, G: 131, B: 47, A: 255}
+	case theme.ColorNameDisabledButton:
+		return color.NRGBA{R: 224, G: 198, B: 166, A: 255}
+	case theme.ColorNameForeground:
+		return color.NRGBA{R: 72, G: 45, B: 24, A: 255}
+	case theme.ColorNameHeaderBackground:
+		return color.NRGBA{R: 255, G: 228, B: 184, A: 255}
+	case theme.ColorNameHover:
+		return color.NRGBA{R: 255, G: 215, B: 148, A: 255}
+	case theme.ColorNameInputBackground:
+		return color.NRGBA{R: 255, G: 252, B: 244, A: 255}
+	case theme.ColorNamePlaceHolder:
+		return color.NRGBA{R: 139, G: 96, B: 54, A: 255}
+	case theme.ColorNamePressed:
+		return color.NRGBA{R: 205, G: 95, B: 28, A: 255}
+	case theme.ColorNamePrimary:
+		return color.NRGBA{R: 232, G: 103, B: 31, A: 255}
+	case theme.ColorNameScrollBar:
+		return color.NRGBA{R: 188, G: 125, B: 70, A: 255}
+	case theme.ColorNameSelection:
+		return color.NRGBA{R: 255, G: 190, B: 103, A: 255}
+	case theme.ColorNameShadow:
+		return color.NRGBA{R: 92, G: 54, B: 25, A: 80}
+	}
+	return theme.DefaultTheme().Color(name, variant)
+}
+
+func (catTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return theme.DefaultTheme().Font(style)
+}
+
+func (catTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return theme.DefaultTheme().Icon(name)
+}
+
+func (catTheme) Size(name fyne.ThemeSizeName) float32 {
+	switch name {
+	case theme.SizeNamePadding:
+		return 12
+	case theme.SizeNameText:
+		return 15
+	case theme.SizeNameHeadingText:
+		return 25
+	case theme.SizeNameInlineIcon:
+		return 20
+	}
+	return theme.DefaultTheme().Size(name)
+}
+
+type catScene struct {
+	root       *fyne.Container
+	cat        *canvas.Image
+	badge      *canvas.Text
+	zzz        *canvas.Text
+	lockBand   *canvas.Rectangle
+	lockBandHi *canvas.Rectangle
+	locked     bool
+	frame      int
+	frameLock  sync.Mutex
+}
+
+func newCatScene() *catScene {
+	c := &catScene{
+		cat:        canvas.NewImageFromResource(openMojiCat),
+		badge:      canvas.NewText("READY", color.NRGBA{R: 255, G: 246, B: 226, A: 255}),
+		zzz:        canvas.NewText("Zzz", color.NRGBA{R: 101, G: 67, B: 38, A: 255}),
+		lockBand:   canvas.NewRectangle(color.NRGBA{R: 101, G: 67, B: 38, A: 210}),
+		lockBandHi: canvas.NewRectangle(color.NRGBA{R: 255, G: 205, B: 123, A: 230}),
+	}
+
+	c.cat.FillMode = canvas.ImageFillContain
+	for _, txt := range []*canvas.Text{c.badge, c.zzz} {
+		txt.Alignment = fyne.TextAlignCenter
+		txt.TextStyle = fyne.TextStyle{Bold: true}
+	}
+	c.badge.TextSize = 18
+	c.zzz.TextSize = 28
+
+	bg := canvas.NewRectangle(color.NRGBA{R: 255, G: 235, B: 196, A: 255})
+	accent := canvas.NewRectangle(color.NRGBA{R: 255, G: 128, B: 0, A: 255})
+	soft := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
+	checkerA := canvas.NewRectangle(color.NRGBA{R: 255, G: 221, B: 159, A: 255})
+	checkerB := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
+
+	c.root = container.NewWithoutLayout(bg, checkerA, checkerB, accent, soft, c.cat, c.lockBand, c.lockBandHi, c.badge, c.zzz)
+	bg.Resize(fyne.NewSize(280, 280))
+	checkerA.Resize(fyne.NewSize(72, 72))
+	checkerA.Move(fyne.NewPos(0, 0))
+	checkerB.Resize(fyne.NewSize(72, 72))
+	checkerB.Move(fyne.NewPos(208, 208))
+	accent.Resize(fyne.NewSize(280, 58))
+	accent.Move(fyne.NewPos(0, 222))
+	soft.Resize(fyne.NewSize(210, 210))
+	soft.Move(fyne.NewPos(35, 20))
+	c.cat.Resize(fyne.NewSize(178, 178))
+	c.cat.Move(fyne.NewPos(51, 42))
+	c.lockBand.Resize(fyne.NewSize(190, 30))
+	c.lockBand.Move(fyne.NewPos(45, 120))
+	c.lockBandHi.Resize(fyne.NewSize(140, 8))
+	c.lockBandHi.Move(fyne.NewPos(70, 131))
+	c.badge.Resize(fyne.NewSize(180, 32))
+	c.badge.Move(fyne.NewPos(50, 236))
+	c.zzz.Resize(fyne.NewSize(88, 36))
+	c.zzz.Move(fyne.NewPos(182, 26))
+	c.root.Resize(fyne.NewSize(280, 280))
+
+	c.setLocked(false)
+	return c
+}
+
+func (c *catScene) setLocked(isLocked bool) {
+	c.frameLock.Lock()
+	defer c.frameLock.Unlock()
+
+	c.locked = isLocked
+	if isLocked {
+		c.badge.Text = "KEYS BLOCKED"
+		c.cat.Translucency = 0.12
+		c.lockBand.Show()
+		c.lockBandHi.Show()
+		c.zzz.Show()
+	} else {
+		c.badge.Text = "ALL CLEAR"
+		c.cat.Translucency = 0
+		c.lockBand.Hide()
+		c.lockBandHi.Hide()
+		c.zzz.Hide()
+	}
+	canvas.Refresh(c.root)
+}
+
+func (c *catScene) animate() {
+	ticker := time.NewTicker(450 * time.Millisecond)
+	for range ticker.C {
+		c.frameLock.Lock()
+		c.frame++
+		frame := c.frame
+		isLocked := c.locked
+		c.frameLock.Unlock()
+
+		fyne.Do(func() {
+			if isLocked {
+				c.zzz.Text = []string{"Z", "Zz", "Zzz", "zZz"}[frame%4]
+				c.zzz.Move(fyne.NewPos(182+float32((frame%2)*5), 26-float32((frame%3)*3)))
+			} else if frame%2 == 0 {
+				c.cat.Move(fyne.NewPos(51, 39))
+			} else {
+				c.cat.Move(fyne.NewPos(51, 43))
+			}
+			canvas.Refresh(c.root)
+		})
+	}
+}
+
+func main() {
+	appLogger.Info("application starting",
+		"name", appName,
+		"version", appVersion,
+		"goos", runtime.GOOS,
+		"goarch", runtime.GOARCH,
+		"debug_logs", debugLoggingEnabled(),
+	)
+
+	statusUpdates := make(chan string, 4)
+	go startKeyboardHook(statusUpdates)
+
+	catApp := app.New()
+	catApp.Settings().SetTheme(catTheme{})
+
+	win := catApp.NewWindow(appName)
+	win.Resize(fyne.NewSize(440, 560))
+	win.SetFixedSize(true)
+	appLogger.Debug("main window configured", "width", 440, "height", 560, "fixed_size", true)
+
+	scene := newCatScene()
+	go scene.animate()
+
+	title := canvas.NewText("CatKeyper", color.NRGBA{R: 86, G: 48, B: 22, A: 255})
+	title.Alignment = fyne.TextAlignCenter
+	title.TextSize = 30
+	title.TextStyle = fyne.TextStyle{Bold: true}
+
+	stateText := canvas.NewText("UNLOCKED", color.NRGBA{R: 48, G: 121, B: 82, A: 255})
+	stateText.Alignment = fyne.TextAlignCenter
+	stateText.TextSize = 24
+	stateText.TextStyle = fyne.TextStyle{Bold: true}
+	stateBg := canvas.NewRectangle(color.NRGBA{R: 236, G: 255, B: 242, A: 255})
+	statePill := container.NewGridWrap(fyne.NewSize(260, 44), container.NewStack(stateBg, container.NewCenter(stateText)))
+
+	helpText := widget.NewLabel("Unlock: hold Shift, then press C, A, T.")
+	helpText.Wrapping = fyne.TextWrapWord
+	helpText.Alignment = fyne.TextAlignCenter
+
+	hookStatus := widget.NewLabel("Starting keyboard guard...")
+	hookStatus.Wrapping = fyne.TextWrapWord
+	hookStatus.Alignment = fyne.TextAlignCenter
+
+	lockButton := widget.NewButtonWithIcon("Lock Keyboard", theme.VisibilityOffIcon(), nil)
+	unlockButton := widget.NewButtonWithIcon("Unlock Keyboard", theme.ConfirmIcon(), nil)
+
+	setLocked := func(isLocked bool) {
+		previous := locked.Swap(isLocked)
+		hookState.mu.Lock()
+		hookState.reset()
+		hookState.mu.Unlock()
+		if previous != isLocked {
+			appLogger.Info("keyboard lock state changed",
+				"locked", isLocked,
+				"suppressed_events_total", suppressedEvents.Load(),
+			)
+		} else {
+			appLogger.Debug("keyboard lock state refreshed", "locked", isLocked)
+		}
+
+		scene.setLocked(isLocked)
+		if isLocked {
+			stateText.Text = "LOCKED"
+			stateText.Color = color.NRGBA{R: 171, G: 57, B: 31, A: 255}
+			stateBg.FillColor = color.NRGBA{R: 255, G: 235, B: 224, A: 255}
+			lockButton.Disable()
+			unlockButton.Enable()
+		} else {
+			stateText.Text = "UNLOCKED"
+			stateText.Color = color.NRGBA{R: 48, G: 121, B: 82, A: 255}
+			stateBg.FillColor = color.NRGBA{R: 236, G: 255, B: 242, A: 255}
+			lockButton.Enable()
+			unlockButton.Disable()
+		}
+		stateText.Refresh()
+		stateBg.Refresh()
+	}
+
+	lockButton.OnTapped = func() {
+		appLogger.Info("lock requested from UI")
+		setLocked(true)
+	}
+	unlockButton.OnTapped = func() {
+		appLogger.Info("unlock requested from UI")
+		setLocked(false)
+	}
+	unlockButton.Disable()
+
+	sourceText := widget.NewLabel("Cat asset: OpenMoji, CC BY-SA 4.0")
+	sourceText.Alignment = fyne.TextAlignCenter
+	sourceText.TextStyle = fyne.TextStyle{Italic: true}
+
+	buttons := container.NewGridWithColumns(2, lockButton, unlockButton)
+	art := container.NewGridWrap(fyne.NewSize(280, 280), scene.root)
+	panel := container.NewVBox(
+		title,
+		container.NewCenter(statePill),
+		container.NewCenter(art),
+		helpText,
+		buttons,
+		hookStatus,
+		sourceText,
+	)
+
+	background := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
+	win.SetContent(container.NewStack(background, container.NewPadded(panel)))
+
+	go func() {
+		for {
+			select {
+			case <-unlockNotifications:
+				appLogger.Debug("processing global unlock notification on UI thread")
+				fyne.Do(func() { setLocked(false) })
+			case msg := <-statusUpdates:
+				text := msg
+				appLogger.Info("keyboard guard status updated", "status", text)
+				fyne.Do(func() {
+					hookStatus.SetText(text)
+				})
+			}
+		}
+	}()
+
+	win.SetCloseIntercept(func() {
+		appLogger.Info("application closing", "suppressed_events_total", suppressedEvents.Load())
+		locked.Store(false)
+		win.Close()
+	})
+
+	_ = unsafe.Sizeof(C.int(0))
+	appLogger.Info("showing main window")
+	win.ShowAndRun()
+	appLogger.Info("application stopped", "suppressed_events_total", suppressedEvents.Load())
+}
