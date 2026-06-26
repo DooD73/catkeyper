@@ -95,12 +95,15 @@ import (
 	"time"
 	"unsafe"
 
+	"net/url"
+
 	"catkeyper/pkg/lockmanager"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -353,6 +356,68 @@ func (c *catScene) animate() {
 	}
 }
 
+var supportLinkColor = color.NRGBA{R: 139, G: 90, B: 43, A: 210}
+
+type supportLink struct {
+	widget.BaseWidget
+	hovered bool
+}
+
+func newSupportLink() *supportLink {
+	l := &supportLink{}
+	l.ExtendBaseWidget(l)
+	return l
+}
+
+func (l *supportLink) MouseIn(*desktop.MouseEvent)    { l.hovered = true; l.Refresh() }
+func (l *supportLink) MouseMoved(*desktop.MouseEvent) {}
+func (l *supportLink) MouseOut()                      { l.hovered = false; l.Refresh() }
+
+func (l *supportLink) Tapped(*fyne.PointEvent) {
+	u, _ := url.Parse("mailto:catkeyper.support@gmail.com")
+	fyne.CurrentApp().OpenURL(u)
+}
+
+type supportLinkRenderer struct {
+	link      *supportLink
+	text      *canvas.Text
+	underline *canvas.Rectangle
+}
+
+func (r *supportLinkRenderer) Layout(size fyne.Size) {
+	r.text.Resize(size)
+	r.text.Move(fyne.NewPos(0, 0))
+	r.underline.Resize(fyne.NewSize(size.Width, 1))
+	r.underline.Move(fyne.NewPos(0, size.Height-1))
+}
+
+func (r *supportLinkRenderer) MinSize() fyne.Size { return r.text.MinSize() }
+
+func (r *supportLinkRenderer) Refresh() {
+	if r.link.hovered {
+		r.underline.Show()
+	} else {
+		r.underline.Hide()
+	}
+	canvas.Refresh(r.text)
+	canvas.Refresh(r.underline)
+}
+
+func (r *supportLinkRenderer) Destroy() {}
+
+func (r *supportLinkRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.text, r.underline}
+}
+
+func (l *supportLink) CreateRenderer() fyne.WidgetRenderer {
+	text := canvas.NewText("Contact Support", supportLinkColor)
+	text.TextSize = 12
+	text.Alignment = fyne.TextAlignCenter
+	underline := canvas.NewRectangle(supportLinkColor)
+	underline.Hide()
+	return &supportLinkRenderer{link: l, text: text, underline: underline}
+}
+
 func main() {
 	appLogger.Info("application starting",
 		"name", appName,
@@ -453,6 +518,7 @@ func main() {
 		buttons,
 		hookStatus,
 		sourceText,
+		container.NewCenter(newSupportLink()),
 	)
 
 	background := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})

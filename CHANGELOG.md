@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Automated unit tests for unlock chord logic, lock/unlock decisions, and icon rendering
 - `make test` target and CI test step
+- "Contact Support" link at the bottom of the app window; clicking it opens the default mail client addressed to `catkeyper.support@gmail.com`
+
+### Changed
+
+- Updated support email to `catkeyper.support@gmail.com` in `SECURITY.md`
 
 ## [1.0.0] - 2026-06-24
 
