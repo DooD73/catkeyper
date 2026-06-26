@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Removed
+### Added
 
-- Developer ID signing and notarization Makefile targets and documentation
+- Automated unit tests for unlock chord logic, lock/unlock decisions, and icon rendering
+- `make test` target and CI test step
 
 ## [1.0.0] - 2026-06-24
 

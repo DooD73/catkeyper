@@ -21,6 +21,9 @@ jobs:
       - name: Verify module
         run: go mod verify
 
+      - name: Run unit tests
+        run: make test
+
       - name: Build binary
         run: go build -trimpath -ldflags "-s -w" -o build/catkeyper .
 
