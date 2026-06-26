@@ -13,7 +13,7 @@ Security fixes are provided for the latest release on [GitHub Releases](https://
 
 Please do **not** open a public GitHub issue for security vulnerabilities.
 
-Email **diegofaso00@gmail.com** with:
+Email **catkeyper.support@gmail.com** with:
 
 - A description of the issue
 - Steps to reproduce
