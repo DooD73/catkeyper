@@ -9,7 +9,7 @@ ICNS := assets/AppIcon.icns
 ZIP := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.zip
 DMG := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.dmg
 
-.PHONY: build run icon package adhoc-sign zip dmg release clean
+.PHONY: build run test icon package adhoc-sign zip dmg release clean
 
 build:
 	mkdir -p "$(BUILD_DIR)"
@@ -17,6 +17,9 @@ build:
 
 run:
 	go run .
+
+test:
+	go test -v ./...
 
 icon:
 	mkdir -p "$(BUILD_DIR)"

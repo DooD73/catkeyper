@@ -92,9 +92,10 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"catkeyper/pkg/lockmanager"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -109,42 +110,15 @@ var openMojiCatSVG []byte
 
 var openMojiCat = fyne.NewStaticResource("openmoji-cat-face.svg", openMojiCatSVG)
 
-const (
-	appName = "CatKeyper"
-
-	keyA      uint16 = 0
-	keyC      uint16 = 8
-	keyT      uint16 = 17
-	keyShift  uint16 = 56
-	keyRShift uint16 = 60
-
-	eventKeyDown      uint32 = 10
-	eventKeyUp        uint32 = 11
-	eventFlagsChanged uint32 = 12
-
-	shiftMask uint64 = 1 << 17
-)
+const appName = "CatKeyper"
 
 var (
 	appVersion = "1.0.0"
 
-	locked           atomic.Bool
-	suppressedEvents atomic.Uint64
-
-	hookState = &unlockState{
-		pressed: make(map[uint16]bool),
-	}
-
+	keyboard            = lockmanager.New()
 	unlockNotifications = make(chan struct{}, 1)
 	appLogger           = newLogger()
 )
-
-type unlockState struct {
-	mu          sync.Mutex
-	pressed     map[uint16]bool
-	sequence    string
-	sequenceTTL time.Time
-}
 
 func newLogger() *slog.Logger {
 	level := slog.LevelInfo
@@ -165,16 +139,12 @@ func debugLoggingEnabled() bool {
 
 //export goKeyboardDecision
 func goKeyboardDecision(keycode C.uint16_t, flags C.uint64_t, eventType C.uint32_t) C.int {
-	if !locked.Load() {
-		return 0
-	}
-
-	if hookState.acceptsUnlockEvent(uint16(keycode), uint64(flags), uint32(eventType)) {
-		locked.Store(false)
-		count := suppressedEvents.Load()
+	suppress, unlocked := keyboard.KeyboardDecision(uint16(keycode), uint64(flags), uint32(eventType))
+	if unlocked {
+		count := keyboard.SuppressedCount()
 		appLogger.Info("global unlock sequence accepted",
 			"suppressed_events", count,
-			"event_type", eventTypeName(uint32(eventType)),
+			"event_type", lockmanager.EventTypeName(uint32(eventType)),
 		)
 		select {
 		case unlockNotifications <- struct{}{}:
@@ -182,136 +152,17 @@ func goKeyboardDecision(keycode C.uint16_t, flags C.uint64_t, eventType C.uint32
 			appLogger.Debug("unlock notification already pending")
 		}
 	}
-
-	suppressedEvents.Add(1)
-	return 1
+	if suppress {
+		return 1
+	}
+	return 0
 }
 
 //export goEventTapReenabled
 func goEventTapReenabled(eventType C.uint32_t) {
 	appLogger.Warn("macOS keyboard event tap was disabled and re-enabled",
-		"reason", eventTypeName(uint32(eventType)),
+		"reason", lockmanager.EventTypeName(uint32(eventType)),
 	)
-}
-
-func (s *unlockState) acceptsUnlockEvent(keycode uint16, flags uint64, eventType uint32) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	now := time.Now()
-	shiftHeld := flags&shiftMask != 0 || s.pressed[keyShift] || s.pressed[keyRShift]
-
-	switch eventType {
-	case eventFlagsChanged:
-		if keycode == keyShift || keycode == keyRShift {
-			s.pressed[keycode] = flags&shiftMask != 0
-			if !s.pressed[keyShift] && !s.pressed[keyRShift] && flags&shiftMask == 0 {
-				s.reset()
-				appLogger.Debug("unlock sequence reset after shift release")
-			}
-		}
-		return false
-	case eventKeyUp:
-		delete(s.pressed, keycode)
-		return false
-	case eventKeyDown:
-		s.pressed[keycode] = true
-	default:
-		return false
-	}
-
-	if !shiftHeld {
-		s.reset()
-		if isUnlockKey(keycode) {
-			appLogger.Debug("unlock key ignored because shift is not held", "key", keyName(keycode))
-		}
-		return false
-	}
-
-	if s.pressed[keyC] && s.pressed[keyA] && s.pressed[keyT] {
-		s.reset()
-		appLogger.Debug("simultaneous unlock chord matched")
-		return true
-	}
-
-	if now.After(s.sequenceTTL) {
-		s.sequence = ""
-	}
-	s.sequenceTTL = now.Add(2 * time.Second)
-
-	switch keycode {
-	case keyC:
-		s.sequence = "C"
-		appLogger.Debug("unlock sequence progress", "sequence", s.sequence)
-	case keyA:
-		if s.sequence == "C" {
-			s.sequence = "CA"
-			appLogger.Debug("unlock sequence progress", "sequence", s.sequence)
-		} else {
-			s.sequence = ""
-			appLogger.Debug("unlock sequence reset", "key", keyName(keycode))
-		}
-	case keyT:
-		if s.sequence == "CA" {
-			s.reset()
-			appLogger.Debug("sequential unlock chord matched")
-			return true
-		}
-		s.sequence = ""
-		appLogger.Debug("unlock sequence reset", "key", keyName(keycode))
-	default:
-		s.sequence = ""
-	}
-
-	return false
-}
-
-func eventTypeName(eventType uint32) string {
-	switch eventType {
-	case eventKeyDown:
-		return "key_down"
-	case eventKeyUp:
-		return "key_up"
-	case eventFlagsChanged:
-		return "flags_changed"
-	case 0xFFFFFFFE:
-		return "tap_disabled_by_timeout"
-	case 0xFFFFFFFF:
-		return "tap_disabled_by_user_input"
-	default:
-		return "unknown"
-	}
-}
-
-func keyName(keycode uint16) string {
-	switch keycode {
-	case keyA:
-		return "A"
-	case keyC:
-		return "C"
-	case keyT:
-		return "T"
-	case keyShift:
-		return "left_shift"
-	case keyRShift:
-		return "right_shift"
-	default:
-		return "unknown"
-	}
-}
-
-func isUnlockKey(keycode uint16) bool {
-	return keycode == keyA || keycode == keyC || keycode == keyT
-}
-
-func (s *unlockState) reset() {
-	s.sequence = ""
-	s.sequenceTTL = time.Time{}
-	for k := range s.pressed {
-		if k != keyShift && k != keyRShift {
-			delete(s.pressed, k)
-		}
-	}
 }
 
 func startKeyboardHook(status chan<- string) {
@@ -549,14 +400,12 @@ func main() {
 	unlockButton := widget.NewButtonWithIcon("Unlock Keyboard", theme.ConfirmIcon(), nil)
 
 	setLocked := func(isLocked bool) {
-		previous := locked.Swap(isLocked)
-		hookState.mu.Lock()
-		hookState.reset()
-		hookState.mu.Unlock()
+		previous := keyboard.IsLocked()
+		keyboard.SetLocked(isLocked)
 		if previous != isLocked {
 			appLogger.Info("keyboard lock state changed",
 				"locked", isLocked,
-				"suppressed_events_total", suppressedEvents.Load(),
+				"suppressed_events_total", keyboard.SuppressedCount(),
 			)
 		} else {
 			appLogger.Debug("keyboard lock state refreshed", "locked", isLocked)
@@ -626,13 +475,13 @@ func main() {
 	}()
 
 	win.SetCloseIntercept(func() {
-		appLogger.Info("application closing", "suppressed_events_total", suppressedEvents.Load())
-		locked.Store(false)
+		appLogger.Info("application closing", "suppressed_events_total", keyboard.SuppressedCount())
+		keyboard.SetLocked(false)
 		win.Close()
 	})
 
 	_ = unsafe.Sizeof(C.int(0))
 	appLogger.Info("showing main window")
 	win.ShowAndRun()
-	appLogger.Info("application stopped", "suppressed_events_total", suppressedEvents.Load())
+	appLogger.Info("application stopped", "suppressed_events_total", keyboard.SuppressedCount())
 }

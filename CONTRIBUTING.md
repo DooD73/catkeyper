@@ -28,11 +28,53 @@ For a release-style build:
 make release
 ```
 
+## Testing
+
+### Automated unit tests
+
+Run the full suite:
+
+```bash
+make test
+```
+
+Or directly:
+
+```bash
+go test -v ./...
+```
+
+Run a single package:
+
+```bash
+go test -v ./pkg/lockmanager/...
+go test -v ./internal/iconrender/...
+```
+
+Unit tests cover pure Go logic only:
+
+- Unlock chord state machine (sequential and simultaneous Shift+C+A+T)
+- Lock suppress / unlock decision engine
+- Icon rasterization helpers
+
+They do **not** exercise macOS hooks, Accessibility permissions, Fyne UI, or packaging.
+
+### Manual macOS integration testing
+
+Test on a real Mac when your change touches:
+
+- CGEventTap keyboard hook behavior
+- Accessibility or Input Monitoring permissions
+- Fyne UI and menu bar presentation
+- Packaging (`make release`, codesign, `.app` bundle)
+
+For hook debugging, run with `CATKEYPER_DEBUG=1` (not required for unit tests).
+
 ## Making changes
 
 1. Fork the repository and create a branch from `main`.
 2. Make focused changes with clear commit messages.
-3. Test on a real Mac when your change touches keyboard locking, permissions, or packaging.
+3. Run `make test` for logic changes. Test on a real Mac when your change touches keyboard hooks, permissions, UI, or packaging.
 4. Open a pull request against `main` and fill out the PR template.
 
 ## Pull request guidelines
