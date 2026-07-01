@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: macos-14
+    env:
+      # Temporarily set this to "true" on a test branch for dry-run: true behavior.
+      # This validates parsing and artifact generation without creating a GitHub Release.
+      DRY_RUN: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: go.sum
+
+      - name: Parse release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tags must match vX.Y.Z, got '$tag'."
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "zip=build/catkeyper-$version-macos.zip" >> "$GITHUB_OUTPUT"
+          echo "dmg=build/catkeyper-$version-macos.dmg" >> "$GITHUB_OUTPUT"
+          echo "stable_zip=build/catkeyper-macos.zip" >> "$GITHUB_OUTPUT"
+          echo "stable_dmg=build/catkeyper-macos.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Verify module
+        run: go mod verify
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Build release artifacts
+        run: make release VERSION="${{ steps.version.outputs.version }}"
+
+      - name: Verify release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for artifact in \
+            "${{ steps.version.outputs.zip }}" \
+            "${{ steps.version.outputs.dmg }}"
+          do
+            if [[ ! -s "$artifact" ]]; then
+              echo "::error::Expected release asset '$artifact' was not created or is empty."
+              exit 1
+            fi
+          done
+
+      - name: Create stable download aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cp "${{ steps.version.outputs.zip }}" "${{ steps.version.outputs.stable_zip }}"
+          cp "${{ steps.version.outputs.dmg }}" "${{ steps.version.outputs.stable_dmg }}"
+
+      - name: Extract release notes
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.version.outputs.version }}"
+          tag="${{ steps.version.outputs.tag }}"
+          notes_file="release-notes.md"
+
+          awk -v version="$version" -v tag="$tag" '
+            BEGIN {
+              in_section = 0
+              found = 0
+            }
+            /^##[[:space:]]+/ {
+              heading = $0
+              sub(/^##[[:space:]]+/, "", heading)
+              sub(/[[:space:]]+-.*$/, "", heading)
+              gsub(/^\[/, "", heading)
+              gsub(/\]$/, "", heading)
+
+              if (heading == version || heading == tag) {
+                in_section = 1
+                found = 1
+                next
+              }
+
+              if (in_section) {
+                exit
+              }
+            }
+            in_section && /^\[[^]]+\]:/ {
+              exit
+            }
+            in_section {
+              print
+            }
+            END {
+              if (!found) {
+                exit 2
+              }
+            }
+          ' CHANGELOG.md > "$notes_file" || status=$?
+
+          if [[ "${status:-0}" -eq 2 ]]; then
+            echo "::warning::No CHANGELOG.md section found for $tag; using fallback release notes."
+            printf 'Release %s\n' "$tag" > "$notes_file"
+          elif [[ "${status:-0}" -ne 0 ]]; then
+            echo "::error::Failed to parse CHANGELOG.md for $tag."
+            exit "${status:-1}"
+          fi
+
+          if [[ ! -s "$notes_file" ]]; then
+            echo "::warning::CHANGELOG.md section for $tag was empty; using fallback release notes."
+            printf 'Release %s\n' "$tag" > "$notes_file"
+          fi
+
+          echo "file=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Dry run release
+        if: env.DRY_RUN == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "DRY_RUN=true; skipping GitHub Release creation."
+          echo "Would publish ${{ steps.version.outputs.tag }} with:"
+          echo "- ${{ steps.version.outputs.zip }}"
+          echo "- ${{ steps.version.outputs.dmg }}"
+          echo "- ${{ steps.version.outputs.stable_zip }}"
+          echo "- ${{ steps.version.outputs.stable_dmg }}"
+          echo "Release notes:"
+          cat "${{ steps.notes.outputs.file }}"
+
+      - name: Create GitHub Release and upload assets
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ steps.version.outputs.tag }}"
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::GitHub Release '$tag' already exists. Delete it or choose a new SemVer tag."
+            exit 1
+          fi
+
+          gh release create "$tag" \
+            "${{ steps.version.outputs.zip }}" \
+            "${{ steps.version.outputs.dmg }}" \
+            "${{ steps.version.outputs.stable_zip }}" \
+            "${{ steps.version.outputs.stable_dmg }}" \
+            --title "$tag" \
+            --notes-file "${{ steps.notes.outputs.file }}" \
+            --verify-tag
