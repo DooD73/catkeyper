@@ -12,8 +12,8 @@ Lock keyboard input system-wide from the menu bar. Unlock with the button or hol
 
 Pre-built macOS binaries are available on [GitHub Releases](https://github.com/DooD73/catkeyper/releases/latest):
 
-- [ZIP](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-1.0.0-macos.zip) (recommended)
-- [DMG](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-1.0.0-macos.dmg)
+- [ZIP](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.zip) (recommended)
+- [DMG](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.dmg)
 
 Requires macOS 12.0 (Monterey) or later.
 
@@ -57,8 +57,8 @@ make release
 This creates:
 
 - `build/CatKeyper.app`
-- `build/catkeyper-1.0.0-macos.zip`
-- `build/catkeyper-1.0.0-macos.dmg`
+- `build/catkeyper-<version>-macos.zip`
+- `build/catkeyper-<version>-macos.dmg`
 
 Run locally without packaging:
 
