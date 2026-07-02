@@ -85,17 +85,19 @@ static int accessibilityTrustedWithPrompt(void) {
 import "C"
 
 import (
+	"bytes"
 	_ "embed"
+	"image"
 	"image/color"
+	"image/png"
 	"log/slog"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 	"unsafe"
-
-	"net/url"
 
 	"catkeyper/pkg/lockmanager"
 
@@ -106,14 +108,24 @@ import (
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/fyne-io/oksvg"
+	"github.com/srwiley/rasterx"
 )
 
 //go:embed assets/openmoji-cat-face.svg
 var openMojiCatSVG []byte
 
+//go:embed assets/openmoji-cat-face-outline.svg
+var openMojiCatOutlineSVG []byte
+
 var openMojiCat = fyne.NewStaticResource("openmoji-cat-face.svg", openMojiCatSVG)
 
 const appName = "CatKeyper"
+
+var (
+	trayIconActive   = newTrayIconResource("catkeyper-tray-active.png", 0xff)
+	trayIconInactive = newTrayIconResource("catkeyper-tray-inactive.png", 0x8c)
+)
 
 var (
 	appVersion = "1.0.0"
@@ -138,6 +150,34 @@ func newLogger() *slog.Logger {
 func debugLoggingEnabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("CATKEYPER_DEBUG")))
 	return v == "1" || v == "true" || v == "yes" || v == "debug"
+}
+
+func newTrayIconResource(name string, alpha uint8) fyne.Resource {
+	const size = 72
+
+	icon, err := oksvg.ReadIconStream(bytes.NewReader(openMojiCatOutlineSVG))
+	if err != nil {
+		return theme.NewThemedResource(fyne.NewStaticResource("openmoji-cat-face-outline.svg", openMojiCatOutlineSVG))
+	}
+
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	icon.SetTarget(0, 0, size, size)
+	scanner := rasterx.NewScannerGV(size, size, img, img.Bounds())
+	dasher := rasterx.NewDasher(size, size, scanner)
+	icon.Draw(dasher, 1)
+
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 0
+		img.Pix[i+1] = 0
+		img.Pix[i+2] = 0
+		img.Pix[i+3] = uint8(uint16(img.Pix[i+3]) * uint16(alpha) / 0xff)
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return theme.NewThemedResource(fyne.NewStaticResource("openmoji-cat-face-outline.svg", openMojiCatOutlineSVG))
+	}
+	return theme.NewThemedResource(fyne.NewStaticResource(name, buf.Bytes()))
 }
 
 //export goKeyboardDecision
@@ -432,6 +472,7 @@ func main() {
 
 	catApp := app.New()
 	catApp.Settings().SetTheme(catTheme{})
+	catApp.SetIcon(trayIconInactive)
 
 	win := catApp.NewWindow(appName)
 	win.Resize(fyne.NewSize(440, 560))
@@ -464,6 +505,31 @@ func main() {
 	lockButton := widget.NewButtonWithIcon("Lock Keyboard", theme.VisibilityOffIcon(), nil)
 	unlockButton := widget.NewButtonWithIcon("Unlock Keyboard", theme.ConfirmIcon(), nil)
 
+	var (
+		trayApp        desktop.App
+		trayMenu       *fyne.Menu
+		trayLockItem   *fyne.MenuItem
+		trayUnlockItem *fyne.MenuItem
+	)
+	if d, ok := catApp.(desktop.App); ok {
+		trayApp = d
+		trayLockItem = fyne.NewMenuItem("Lock Keyboard", nil)
+		trayLockItem.Icon = theme.VisibilityOffIcon()
+		trayUnlockItem = fyne.NewMenuItem("Unlock Keyboard", nil)
+		trayUnlockItem.Icon = theme.ConfirmIcon()
+		trayMenu = fyne.NewMenu(appName,
+			trayLockItem,
+			trayUnlockItem,
+			fyne.NewMenuItemSeparator(),
+			fyne.NewMenuItem("Show CatKeyper", func() {
+				win.Show()
+				win.RequestFocus()
+			}),
+		)
+		trayApp.SetSystemTrayMenu(trayMenu)
+		trayApp.SetSystemTrayIcon(trayIconInactive)
+	}
+
 	setLocked := func(isLocked bool) {
 		previous := keyboard.IsLocked()
 		keyboard.SetLocked(isLocked)
@@ -478,17 +544,32 @@ func main() {
 
 		scene.setLocked(isLocked)
 		if isLocked {
+			win.SetTitle(appName + " - Locked")
 			stateText.Text = "LOCKED"
 			stateText.Color = color.NRGBA{R: 171, G: 57, B: 31, A: 255}
 			stateBg.FillColor = color.NRGBA{R: 255, G: 235, B: 224, A: 255}
 			lockButton.Disable()
 			unlockButton.Enable()
+			if trayLockItem != nil {
+				trayLockItem.Disabled = true
+				trayUnlockItem.Disabled = false
+				trayApp.SetSystemTrayIcon(trayIconActive)
+			}
 		} else {
+			win.SetTitle(appName + " - Unlocked")
 			stateText.Text = "UNLOCKED"
 			stateText.Color = color.NRGBA{R: 48, G: 121, B: 82, A: 255}
 			stateBg.FillColor = color.NRGBA{R: 236, G: 255, B: 242, A: 255}
 			lockButton.Enable()
 			unlockButton.Disable()
+			if trayLockItem != nil {
+				trayLockItem.Disabled = false
+				trayUnlockItem.Disabled = true
+				trayApp.SetSystemTrayIcon(trayIconInactive)
+			}
+		}
+		if trayMenu != nil {
+			trayMenu.Refresh()
 		}
 		stateText.Refresh()
 		stateBg.Refresh()
@@ -503,6 +584,17 @@ func main() {
 		setLocked(false)
 	}
 	unlockButton.Disable()
+	if trayLockItem != nil {
+		trayLockItem.Action = func() {
+			appLogger.Info("lock requested from menu bar")
+			setLocked(true)
+		}
+		trayUnlockItem.Action = func() {
+			appLogger.Info("unlock requested from menu bar")
+			setLocked(false)
+		}
+	}
+	setLocked(false)
 
 	sourceText := widget.NewLabel("Cat asset: OpenMoji, CC BY-SA 4.0")
 	sourceText.Alignment = fyne.TextAlignCenter
