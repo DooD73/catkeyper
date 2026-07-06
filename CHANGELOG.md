@@ -17,6 +17,8 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-02
+
 ### Added
 
 - Automated unit tests for unlock chord logic, lock/unlock decisions, and icon rendering
@@ -37,5 +39,6 @@ Release section template for the automated release parser:
 - Release packaging via `make release` (`.app`, ZIP, and DMG)
 - Open-source release files: license, contributing guide, issue templates, and CI
 
-[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/DooD73/catkeyper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DooD73/catkeyper/releases/tag/v1.0.0
