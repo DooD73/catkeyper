@@ -20,10 +20,11 @@ func newPrivacyPage(goBack func()) fyne.CanvasObject {
 	title.Alignment = fyne.TextAlignCenter
 	title.TextSize = 30
 	title.TextStyle = fyne.TextStyle{Bold: true}
-	back := widget.NewButtonWithIcon("Back", theme.NavigateBackIcon(), goBack)
+	back := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), goBack)
+	back.Importance = widget.LowImportance
 	header := container.NewStack(
 		container.NewCenter(title),
-		container.NewBorder(nil, nil, back, nil),
+		container.NewBorder(nil, nil, container.NewGridWrap(fyne.NewSize(44, 44), back), nil),
 	)
 
 	headline := widget.NewLabel(privacyTitle)
