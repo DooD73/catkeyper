@@ -12,15 +12,18 @@ Lock keyboard input system-wide from the menu bar. Unlock with the button or hol
 
 Pre-built macOS binaries are available on [GitHub Releases](https://github.com/DooD73/catkeyper/releases/latest):
 
-- [ZIP](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.zip) (recommended)
-- [DMG](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.dmg)
+- [DMG](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.dmg) (recommended)
+- [ZIP](https://github.com/DooD73/catkeyper/releases/latest/download/catkeyper-macos.zip) (archive alternative)
+
+Both downloads include the same app; only the installation format differs.
 
 Requires macOS 12.0 (Monterey) or later.
 
 ## Install
 
-1. Download and open `CatKeyper.app`.
-2. Grant **Accessibility** permission when macOS asks.
+1. Open the recommended DMG and drag `CatKeyper.app` to **Applications**. If you downloaded the ZIP instead, unzip it first, then drag `CatKeyper.app` to **Applications**.
+2. Open CatKeyper from **Applications**.
+3. Grant **Accessibility** permission when macOS asks.
 
 If macOS does not prompt automatically:
 
@@ -29,6 +32,40 @@ If macOS does not prompt automatically:
 Add and enable `CatKeyper.app`, then restart the app.
 
 > **Gatekeeper note:** Release builds are ad-hoc signed. macOS may show a warning on first launch. Right-click the app and choose **Open**.
+
+## Frequently asked questions
+
+### How do I install CatKeyper?
+
+Open the recommended DMG and drag CatKeyper to **Applications**. If you choose the ZIP instead, unzip it first, then drag `CatKeyper.app` to **Applications**.
+
+### Why does macOS ask for Accessibility permission?
+
+CatKeyper needs Accessibility permission to intercept keyboard input while locked. macOS keeps this access under your control in **System Settings**.
+
+### What if macOS will not open CatKeyper?
+
+On first launch, right-click `CatKeyper.app`, choose **Open**, then confirm. If locking still does not work, enable CatKeyper in **System Settings > Privacy & Security > Accessibility**, then restart CatKeyper.
+
+### Which macOS versions are supported?
+
+CatKeyper requires macOS 12.0 (Monterey) or later.
+
+### What is CatKeyper?
+
+CatKeyper is a free, open-source macOS menu bar app that blocks keyboard input system-wide while locked, so curious cat paws cannot type into your active app.
+
+### How do I unlock the keyboard?
+
+Click **Unlock Keyboard** in the menu bar app, or hold **Shift** and press **C**, **A**, **T** in sequence. Both methods remain available while the keyboard is locked.
+
+### Does CatKeyper block my mouse or trackpad?
+
+No. CatKeyper blocks only keyboard input while locked. Your mouse and trackpad remain usable, so you can still open the menu and click **Unlock Keyboard**.
+
+### Is CatKeyper free?
+
+Yes. CatKeyper is free and open source under the MIT License. Optional donations support development via Buy Me a Coffee.
 
 ## Usage
 
