@@ -17,6 +17,10 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+### Added
+
+- Privacy page and menu help item explaining that keyboard events stay local and are never recorded, stored, analyzed, or transmitted
+
 ## [1.0.1] - 2026-07-02
 
 ### Added
