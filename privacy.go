@@ -7,6 +7,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -14,16 +15,16 @@ const privacyTitle = "Your keystrokes stay private"
 
 const privacyStatement = "CatKeyper works locally on your Mac. It checks keyboard events only while locked, so it can block key presses and recognize Shift + CAT. It does not record, store, analyze, or transmit your keystrokes or any other data."
 
-func newPrivacyWindow(catApp fyne.App) fyne.Window {
-	window := catApp.NewWindow("CatKeyper — Privacy & Help")
-	window.Resize(fyne.NewSize(440, 560))
-	window.SetFixedSize(true)
-	window.SetCloseIntercept(window.Hide)
-
+func newPrivacyPage(goBack func()) fyne.CanvasObject {
 	title := canvas.NewText("Privacy", color.NRGBA{R: 86, G: 48, B: 22, A: 255})
 	title.Alignment = fyne.TextAlignCenter
 	title.TextSize = 30
 	title.TextStyle = fyne.TextStyle{Bold: true}
+	back := widget.NewButtonWithIcon("Back", theme.NavigateBackIcon(), goBack)
+	header := container.NewStack(
+		container.NewCenter(title),
+		container.NewBorder(nil, nil, back, nil),
+	)
 
 	headline := widget.NewLabel(privacyTitle)
 	headline.Alignment = fyne.TextAlignCenter
@@ -48,7 +49,6 @@ func newPrivacyWindow(catApp fyne.App) fyne.Window {
 	aboutText.Alignment = fyne.TextAlignCenter
 
 	panel := container.NewVBox(
-		title,
 		headline,
 		container.NewGridWrap(fyne.NewSize(380, 105), statement),
 		widget.NewSeparator(),
@@ -62,8 +62,8 @@ func newPrivacyWindow(catApp fyne.App) fyne.Window {
 	)
 
 	background := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
-	window.SetContent(container.NewStack(background, container.NewPadded(container.NewVScroll(panel))))
-	return window
+	page := container.NewBorder(header, nil, nil, nil, container.NewVScroll(panel))
+	return container.NewStack(background, container.NewPadded(page))
 }
 
 func newPrivacyMenuItem(show func()) *fyne.MenuItem {

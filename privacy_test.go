@@ -8,6 +8,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	fynetest "fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -25,25 +26,36 @@ func TestPrivacyStatementMeetsAcceptanceCriteria(t *testing.T) {
 	}
 }
 
-func TestPrivacyWindowShowsCanonicalStatement(t *testing.T) {
+func TestPrivacyPageShowsCanonicalStatementAndBackAction(t *testing.T) {
 	catApp := fynetest.NewApp()
 	t.Cleanup(catApp.Quit)
 
-	window := newPrivacyWindow(catApp)
-	if window.Title() != "CatKeyper — Privacy & Help" {
-		t.Fatalf("window title = %q", window.Title())
-	}
+	backCalled := false
+	page := newPrivacyPage(func() { backCalled = true })
+
 	for _, text := range []string{
 		privacyStatement,
 		"Why Accessibility permission?",
 		"About CatKeyper",
 	} {
-		if !containsLabelText(window.Content(), text) {
-			t.Fatalf("privacy window does not show %q", text)
+		if !containsLabelText(page, text) {
+			t.Fatalf("privacy page does not show %q", text)
 		}
 	}
-	if min := window.Content().MinSize(); min.Width > 440 || min.Height > 560 {
+	if min := page.MinSize(); min.Width > 440 || min.Height > 560 {
 		t.Fatalf("privacy content minimum size %v exceeds its 440x560 window", min)
+	}
+
+	back := findButton(page, "Back")
+	if back == nil {
+		t.Fatal("privacy page does not have a Back button")
+	}
+	if back.Icon == nil || back.Icon.Name() != theme.NavigateBackIcon().Name() {
+		t.Fatal("Back button does not use the navigate-back icon")
+	}
+	back.Tapped(&fyne.PointEvent{})
+	if !backCalled {
+		t.Fatal("Back button did not invoke its action")
 	}
 }
 
@@ -101,4 +113,24 @@ func containsLabelText(object fyne.CanvasObject, text string) bool {
 		}
 	}
 	return false
+}
+
+func findButton(object fyne.CanvasObject, text string) *widget.Button {
+	switch object := object.(type) {
+	case *widget.Button:
+		if object.Text == text {
+			return object
+		}
+	case *widget.Card:
+		return findButton(object.Content, text)
+	case *container.Scroll:
+		return findButton(object.Content, text)
+	case *fyne.Container:
+		for _, child := range object.Objects {
+			if button := findButton(child, text); button != nil {
+				return button
+			}
+		}
+	}
+	return nil
 }

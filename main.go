@@ -489,12 +489,6 @@ func main() {
 	win.SetFixedSize(true)
 	appLogger.Debug("main window configured", "width", 440, "height", 560, "fixed_size", true)
 
-	privacyWindow := newPrivacyWindow(catApp)
-	showPrivacy := func() {
-		privacyWindow.Show()
-		privacyWindow.RequestFocus()
-	}
-
 	scene := newCatScene()
 	go scene.animate()
 
@@ -521,6 +515,52 @@ func main() {
 	lockButton := widget.NewButtonWithIcon("Lock Keyboard", theme.VisibilityOffIcon(), nil)
 	unlockButton := widget.NewButtonWithIcon("Unlock Keyboard", theme.ConfirmIcon(), nil)
 
+	var mainContent fyne.CanvasObject
+	showingPrivacy := false
+	showHome := func() {
+		showingPrivacy = false
+		win.SetContent(mainContent)
+		if keyboard.IsLocked() {
+			win.SetTitle(appName + " - Locked")
+		} else {
+			win.SetTitle(appName + " - Unlocked")
+		}
+		win.Show()
+		win.RequestFocus()
+	}
+	privacyContent := newPrivacyPage(showHome)
+	showPrivacy := func() {
+		showingPrivacy = true
+		win.SetContent(privacyContent)
+		win.SetTitle(appName + " - Privacy")
+		win.Show()
+		win.RequestFocus()
+	}
+
+	sourceText := widget.NewLabel("Cat asset: OpenMoji, CC BY-SA 4.0")
+	sourceText.Alignment = fyne.TextAlignCenter
+	sourceText.TextStyle = fyne.TextStyle{Italic: true}
+
+	buttons := container.NewGridWithColumns(2, lockButton, unlockButton)
+	art := container.NewGridWrap(fyne.NewSize(280, 280), scene.root)
+	panel := container.NewVBox(
+		title,
+		container.NewCenter(statePill),
+		container.NewCenter(art),
+		helpText,
+		buttons,
+		hookStatus,
+		sourceText,
+		container.NewCenter(container.NewHBox(
+			newSupportLink(),
+			newFooterLink("Privacy", showPrivacy),
+		)),
+	)
+
+	background := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
+	mainContent = container.NewStack(background, container.NewPadded(panel))
+	win.SetContent(mainContent)
+
 	var (
 		trayApp        desktop.App
 		trayMenu       *fyne.Menu
@@ -537,10 +577,7 @@ func main() {
 			trayLockItem,
 			trayUnlockItem,
 			fyne.NewMenuItemSeparator(),
-			fyne.NewMenuItem("Show CatKeyper", func() {
-				win.Show()
-				win.RequestFocus()
-			}),
+			fyne.NewMenuItem("Show CatKeyper", showHome),
 			newPrivacyMenuItem(showPrivacy),
 		)
 		trayApp.SetSystemTrayMenu(trayMenu)
@@ -561,7 +598,9 @@ func main() {
 
 		scene.setLocked(isLocked)
 		if isLocked {
-			win.SetTitle(appName + " - Locked")
+			if !showingPrivacy {
+				win.SetTitle(appName + " - Locked")
+			}
 			stateText.Text = "LOCKED"
 			stateText.Color = color.NRGBA{R: 171, G: 57, B: 31, A: 255}
 			stateBg.FillColor = color.NRGBA{R: 255, G: 235, B: 224, A: 255}
@@ -573,7 +612,9 @@ func main() {
 				trayApp.SetSystemTrayIcon(trayIconActive)
 			}
 		} else {
-			win.SetTitle(appName + " - Unlocked")
+			if !showingPrivacy {
+				win.SetTitle(appName + " - Unlocked")
+			}
 			stateText.Text = "UNLOCKED"
 			stateText.Color = color.NRGBA{R: 48, G: 121, B: 82, A: 255}
 			stateBg.FillColor = color.NRGBA{R: 236, G: 255, B: 242, A: 255}
@@ -612,29 +653,6 @@ func main() {
 		}
 	}
 	setLocked(false)
-
-	sourceText := widget.NewLabel("Cat asset: OpenMoji, CC BY-SA 4.0")
-	sourceText.Alignment = fyne.TextAlignCenter
-	sourceText.TextStyle = fyne.TextStyle{Italic: true}
-
-	buttons := container.NewGridWithColumns(2, lockButton, unlockButton)
-	art := container.NewGridWrap(fyne.NewSize(280, 280), scene.root)
-	panel := container.NewVBox(
-		title,
-		container.NewCenter(statePill),
-		container.NewCenter(art),
-		helpText,
-		buttons,
-		hookStatus,
-		sourceText,
-		container.NewCenter(container.NewHBox(
-			newSupportLink(),
-			newFooterLink("Privacy", showPrivacy),
-		)),
-	)
-
-	background := canvas.NewRectangle(color.NRGBA{R: 255, G: 246, B: 226, A: 255})
-	win.SetContent(container.NewStack(background, container.NewPadded(panel)))
 
 	go func() {
 		for {
