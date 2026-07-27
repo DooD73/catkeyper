@@ -77,6 +77,10 @@ Yes. CatKeyper is free and open source under the MIT License. Optional donations
 CATKEYPER_DEBUG=1 open "build/CatKeyper.app"
 ```
 
+## Privacy
+
+CatKeyper works locally on your Mac. It checks keyboard events only while locked, so it can block key presses and recognize Shift + CAT. It does not record, store, analyze, or transmit your keystrokes or any other data.
+
 ## Build from source
 
 Requirements:

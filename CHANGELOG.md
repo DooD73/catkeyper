@@ -17,6 +17,10 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+### Added
+
+- Privacy page and menu help item explaining that keyboard events stay local and are never recorded, stored, analyzed, or transmitted
+
 ### Changed
 
 - README: promoted DMG as the recommended download format and clarified that both DMG and ZIP contain the same app
