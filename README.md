@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-12%2B-blue)](https://www.apple.com/macos/)
-[![Go](https://img.shields.io/badge/Go-1.22%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 
 A lightweight macOS keyboard lock for keeping accidental paw input out of calls, editors, and chat windows.
 
@@ -86,7 +86,7 @@ CatKeyper works locally on your Mac. It checks keyboard events only while locked
 Requirements:
 
 - macOS 12.0+
-- Go 1.22+
+- Go 1.25+
 - Xcode Command Line Tools
 
 ```bash

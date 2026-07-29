@@ -13,7 +13,7 @@ Thanks for your interest in contributing. CatKeyper is a small macOS menu bar ap
 Requirements:
 
 - macOS 12.0 (Monterey) or later
-- Go 1.22 or later
+- Go 1.25 or later
 - Xcode Command Line Tools (`xcode-select --install`)
 
 ```bash

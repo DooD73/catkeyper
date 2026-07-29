@@ -28,6 +28,11 @@ Release section template for the automated release parser:
 - README: promoted DMG as the recommended download format and clarified that both DMG and ZIP contain the same app
 - README: expanded install steps to explicitly cover the drag-to-Applications flow for both download formats
 - README: added a Frequently Asked Questions section covering installation, Accessibility permission, Gatekeeper, supported macOS versions, unlocking, mouse/trackpad behavior, and licensing
+- Raised the build requirement from Go 1.22 to Go 1.25
+
+### Security
+
+- Upgraded `golang.org/x/image` to 0.43.0 to address GO-2026-4815, GO-2026-5032, GO-2026-5062, and GO-2026-5066 in TIFF decoding
 
 ## [1.0.1] - 2026-07-02
 
