@@ -17,6 +17,8 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-29
+
 ### Added
 
 - Privacy page and menu help item explaining that keyboard events stay local and are never recorded, stored, analyzed, or transmitted
@@ -49,6 +51,7 @@ Release section template for the automated release parser:
 - Release packaging via `make release` (`.app`, ZIP, and DMG)
 - Open-source release files: license, contributing guide, issue templates, and CI
 
-[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/DooD73/catkeyper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/DooD73/catkeyper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DooD73/catkeyper/releases/tag/v1.0.0
