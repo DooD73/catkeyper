@@ -17,6 +17,8 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-11
+
 ### Added
 
 - Branded drag-to-Applications DMG window with stable artwork, icon placement, volume naming, and documented release QA
@@ -60,7 +62,8 @@ Release section template for the automated release parser:
 - Release packaging via `make release` (`.app`, ZIP, and DMG)
 - Open-source release files: license, contributing guide, issue templates, and CI
 
-[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/DooD73/catkeyper/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/DooD73/catkeyper/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/DooD73/catkeyper/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/DooD73/catkeyper/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DooD73/catkeyper/releases/tag/v1.0.0
