@@ -8,6 +8,8 @@ ICONSET := $(BUILD_DIR)/AppIcon.iconset
 ICNS := assets/AppIcon.icns
 ZIP := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.zip
 DMG := $(BUILD_DIR)/$(BIN_NAME)-$(VERSION)-macos.dmg
+DMG_BACKGROUND := assets/dmg-background.png
+DMG_STAGING_DIR := $(BUILD_DIR)/.dmg-staging
 
 .PHONY: build run test icon package adhoc-sign zip dmg release clean
 
@@ -26,7 +28,8 @@ icon:
 	go run ./cmd/iconrender -in assets/openmoji-cat-face.svg -out "$(ICONSET)"
 	iconutil -c icns "$(ICONSET)" -o "$(ICNS)"
 
-package: build icon
+package: build
+	test -f "$(ICNS)"
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(APP_DIR)/Contents/MacOS" "$(APP_DIR)/Contents/Resources"
 	printf '%s\n' \
@@ -69,8 +72,30 @@ zip: adhoc-sign
 	ditto -c -k --keepParent "$(APP_DIR)" "$(ZIP)"
 
 dmg: adhoc-sign
-	rm -f "$(DMG)"
-	hdiutil create -volname "$(APP_NAME)" -srcfolder "$(APP_DIR)" -ov -format UDZO "$(DMG)"
+	@set -eu; \
+	staging_dir="$(DMG_STAGING_DIR)"; \
+	rm -rf "$$staging_dir"; \
+	mkdir -p "$$staging_dir"; \
+	trap 'rm -rf "$$staging_dir"' EXIT HUP INT TERM; \
+	ditto "$(APP_DIR)" "$$staging_dir/$(APP_NAME).app"; \
+	rm -f "$(DMG)"; \
+	create-dmg \
+		--volname "$(APP_NAME)" \
+		--volicon "$(ICNS)" \
+		--background "$(DMG_BACKGROUND)" \
+		--window-pos 200 120 \
+		--window-size 660 400 \
+		--text-size 13 \
+		--icon-size 116 \
+		--icon "$(APP_NAME).app" 175 235 \
+		--hide-extension "$(APP_NAME).app" \
+		--app-drop-link 485 235 \
+		--no-internet-enable \
+		--format UDZO \
+		--filesystem HFS+ \
+		--overwrite \
+		"$(DMG)" \
+		"$$staging_dir"
 
 release: zip dmg
 
