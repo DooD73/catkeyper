@@ -90,7 +90,7 @@ Requirements:
 - macOS 12.0+
 - Go 1.25+
 - Xcode Command Line Tools
-- `create-dmg` 1.3.0+ (`brew install create-dmg`)
+- `create-dmg` 1.2.3+ (`brew install create-dmg`)
 
 ```bash
 git clone https://github.com/DooD73/catkeyper.git
