@@ -93,7 +93,6 @@ dmg: adhoc-sign
 		--no-internet-enable \
 		--format UDZO \
 		--filesystem HFS+ \
-		--overwrite \
 		"$(DMG)" \
 		"$$staging_dir"
 

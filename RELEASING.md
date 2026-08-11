@@ -17,7 +17,7 @@ The release workflow:
 - Push access to `https://github.com/DooD73/catkeyper`
 - A clean `main` branch containing the changelog entry for the version being released
 - A tag in the format `vX.Y.Z`, for example `v1.1.0`
-- [`create-dmg`](https://github.com/create-dmg/create-dmg) 1.3.0 or newer for local DMG builds (`brew install create-dmg`)
+- [`create-dmg`](https://github.com/create-dmg/create-dmg) 1.2.3 or newer for local DMG builds (`brew install create-dmg`)
 
 No personal access token is required. The release workflow uses the built-in `GITHUB_TOKEN` with `contents: write`.
 The workflow installs `create-dmg` on its macOS runner before packaging.
