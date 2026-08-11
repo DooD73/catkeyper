@@ -25,6 +25,8 @@ Requires macOS 12.0 (Monterey) or later.
 2. Open CatKeyper from **Applications**.
 3. Grant **Accessibility** permission when macOS asks.
 
+Copying CatKeyper into Applications does not grant Accessibility permission. macOS keeps that permission separate and requests it when you first open the app.
+
 If macOS does not prompt automatically:
 
 `System Settings > Privacy & Security > Accessibility`
@@ -88,6 +90,7 @@ Requirements:
 - macOS 12.0+
 - Go 1.25+
 - Xcode Command Line Tools
+- `create-dmg` 1.3.0+ (`brew install create-dmg`)
 
 ```bash
 git clone https://github.com/DooD73/catkeyper.git

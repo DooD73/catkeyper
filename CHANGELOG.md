@@ -17,6 +17,10 @@ Release section template for the automated release parser:
 
 ## [Unreleased]
 
+### Added
+
+- Branded drag-to-Applications DMG window with stable artwork, icon placement, volume naming, and documented release QA
+
 ## [1.0.2] - 2026-07-29
 
 ### Added

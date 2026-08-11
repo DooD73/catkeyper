@@ -53,6 +53,9 @@ jobs:
       - name: Run unit tests
         run: make test
 
+      - name: Install DMG packaging tool
+        run: brew install create-dmg
+
       - name: Build release artifacts
         run: make release VERSION="${{ steps.version.outputs.version }}"
 
